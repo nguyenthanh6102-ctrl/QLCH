@@ -344,11 +344,13 @@
 
         // ============================================================
         // drawInvoiceCanvas: vẽ toàn bộ hóa đơn lên canvas thủ công
-        // KHÔNG dùng html2canvas → tránh hoàn toàn lỗi getImageNode
+        // Tối ưu tỉ lệ cho mobile (width 1080px ~ A4 dọc chuẩn)
         // ============================================================
         const drawInvoiceCanvas = async ({ invoice, settings, chartDataUrl, qrDataUrl }) => {
-            const W = 900;
-            const PAD = 60;
+            // Tỉ lệ 9:16 chuẩn mobile — nội dung dồn giữa, 2 bên thoáng
+            const W   = 720;    // width hẹp = thon gọn
+            const PAD = 48;     // padding nhỏ để CW chiếm ~87% width
+            const CW  = W - PAD * 2;
             const fmt = (n) => new Intl.NumberFormat('vi-VN').format(n || 0) + ' đ';
 
             // Build danh sách dòng chi phí
@@ -357,147 +359,151 @@
             if (Array.isArray(fees)) fees.filter(f => f.amount > 0).forEach(f => feeLines.push([f.name || 'Phí khác', fmt(f.amount)]));
             else Object.entries(fees).forEach(([k,v]) => v > 0 && feeLines.push([k, fmt(v)]));
 
-            // Tính chiều cao canvas
-            const baseH = 420 + feeLines.length * 36;
-            const chartH = chartDataUrl ? 220 : 0;
-            const qrH   = qrDataUrl ? 340 : 0;
-            const H = baseH + chartH + qrH + 120;
+            // Tính chiều cao động
+            const ROW_H   = 42;
+            const baseH   = 310 + ROW_H * (2 + feeLines.length) + 100 + 90; // header+rows+total+totalbox
+            const chartH  = chartDataUrl ? 260 : 0;
+            const qrH     = qrDataUrl    ? 380 : 0;
+            const footerH = 80;
+            const H = baseH + chartH + qrH + footerH;
 
             const cv = document.createElement('canvas');
-            cv.width = W * 2; cv.height = H * 2; // retina x2
+            cv.width  = W * 2;  // retina ×2
+            cv.height = H * 2;
             const ctx = cv.getContext('2d');
             ctx.scale(2, 2);
 
-            // Nền trắng
+            // --- Helpers ---
+            const fill = (color) => { ctx.fillStyle = color; };
+
+            const text = (str, x, y, opts = {}) => {
+                ctx.save();
+                ctx.font = `${opts.weight||'normal'} ${opts.size||28}px "Segoe UI", Arial, sans-serif`;
+                ctx.fillStyle = opts.color || '#1e293b';
+                ctx.textAlign = opts.align || 'left';
+                ctx.textBaseline = opts.baseline || 'alphabetic';
+                ctx.fillText(String(str ?? ''), x, y);
+                ctx.restore();
+            };
+
+            const hline = (y, dash=false, color='#e2e8f0', lw=1.5) => {
+                ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=lw;
+                ctx.setLineDash(dash ? [8,6] : []);
+                ctx.beginPath(); ctx.moveTo(PAD,y); ctx.lineTo(W-PAD,y); ctx.stroke();
+                ctx.restore();
+            };
+
+            const roundRect = (x, y, w, h, r, fillColor, strokeColor=null) => {
+                ctx.save(); ctx.fillStyle = fillColor;
+                ctx.beginPath();
+                ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+                ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+                ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+                ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+                ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+                ctx.closePath(); ctx.fill();
+                if (strokeColor) { ctx.strokeStyle=strokeColor; ctx.lineWidth=1.5; ctx.stroke(); }
+                ctx.restore();
+            };
+
+            // --- Nền trắng ---
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, W, H);
 
-            // Helper vẽ text
-            const text = (str, x, y, opts = {}) => {
-                ctx.save();
-                ctx.font = `${opts.weight||'normal'} ${opts.size||14}px "Segoe UI", Arial, sans-serif`;
-                ctx.fillStyle = opts.color || '#1e293b';
-                ctx.textAlign = opts.align || 'left';
-                ctx.fillText(String(str), x, y);
-                ctx.restore();
-            };
+            let y = 56;
 
-            // Helper vẽ dòng kẻ ngang
-            const hline = (y, color = '#e2e8f0') => {
-                ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1;
-                ctx.setLineDash([]);
-                ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
-                ctx.restore();
-            };
+            // ===== HEADER =====
+            text('BIÊN NHẬN TIỀN NHÀ', W/2, y+32, { weight:'900', size:26, color:'#0f172a', align:'center' });
+            y += 52;
+            text(`Phòng ${invoice.details.name} - ${invoice.details.occupants}`, W/2, y+20, { size:16, color:'#64748b', align:'center' });
+            y += 36;
 
-            const hlineDash = (y, color = '#e2e8f0') => {
-                ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-                ctx.setLineDash([6, 4]);
-                ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
-                ctx.restore();
-            };
-
-            // Helper vẽ rect bo góc
-            const roundRect = (x, y, w, h, r, fill) => {
-                ctx.save(); ctx.fillStyle = fill;
-                ctx.beginPath();
-                ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y);
-                ctx.quadraticCurveTo(x+w, y, x+w, y+r);
-                ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-                ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
-                ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
-                ctx.closePath(); ctx.fill(); ctx.restore();
-            };
-
-            let y = PAD;
-
-            // ==== HEADER ====
-            text('BIÊN NHẬN TIỀN NHÀ', W/2, y+28, { weight:'bold', size:22, color:'#0f172a', align:'center' });
-            y += 40;
-            text(`Phòng ${invoice.details.name} - ${invoice.details.occupants}`, W/2, y+16, { size:13, color:'#64748b', align:'center' });
-            y += 24;
             // Badge tháng
-            const badge = `THÁNG ${invoice.month}`;
-            const badgeW = 140;
-            roundRect(W/2 - badgeW/2, y, badgeW, 26, 13, '#eff6ff');
-            text(badge, W/2, y+18, { weight:'bold', size:11, color:'#3b82f6', align:'center' });
-            y += 44;
-            hlineDash(y);
-            y += 24;
+            const badgeTxt = `THÁNG ${invoice.month}`;
+            const bW = 160, bH = 30;
+            roundRect(W/2-bW/2, y, bW, bH, 18, '#eff6ff');
+            text(badgeTxt, W/2, y+26, { weight:'700', size:13, color:'#3b82f6', align:'center' });
+            y += 60;
+            hline(y, true);
+            y += 36;
 
-            // ==== DÒNG CHI TIẾT ====
-            const row = (label, value, opts={}) => {
-                text(label, PAD, y+14, { size:13, color: opts.labelColor||'#64748b' });
-                text(value, W-PAD, y+14, { size:13, weight:'bold', color: opts.valueColor||'#1e293b', align:'right' });
-                y += 34;
+            // ===== ROWS =====
+            const row = (label, value, labelColor='#64748b', valueColor='#0f172a', valueSz=20) => {
+                text(label, PAD, y+ROW_H*0.72, { size:18, color:labelColor });
+                text(value, W-PAD, y+ROW_H*0.72, { size:valueSz, weight:'700', color:valueColor, align:'right' });
+                y += ROW_H;
             };
 
             row('Tiền phòng:', fmt(invoice.details.rentPrice));
+            y += 8;
 
-            // Block tiền điện
-            roundRect(PAD, y, W-PAD*2, 72, 10, '#f8fafc');
-            ctx.save(); ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
-            ctx.strokeRect(PAD, y, W-PAD*2, 72); ctx.restore();
-            text(`Tiền điện (${invoice.eUsed} kWh):`, PAD+12, y+20, { weight:'bold', size:13, color:'#2563eb' });
-            text(fmt(invoice.details.eTotal), W-PAD-12, y+20, { weight:'bold', size:13, color:'#1e293b', align:'right' });
-            text(`Số mới ${invoice.newElectric} − Số cũ ${invoice.oldElectric} = ${invoice.eUsed} kWh`, PAD+12, y+40, { size:10, color:'#94a3b8' });
-            text(`${invoice.eUsed} kWh × ${fmt(invoice.details.electricityPrice).replace(' đ','')} đ/kWh = ${fmt(invoice.details.eTotal)}`, PAD+12, y+58, { size:10, color:'#94a3b8' });
-            y += 84;
+            // Block điện
+            const eBlockH = 92;
+            roundRect(PAD, y, CW, eBlockH, 16, '#f8fafc', '#e2e8f0');
+            text(`Tiền điện (${invoice.eUsed} kWh):`, PAD+16, y+28, { weight:'700', size:18, color:'#2563eb' });
+            text(fmt(invoice.details.eTotal), W-PAD-16, y+28, { weight:'700', size:18, color:'#0f172a', align:'right' });
+            text(`Chỉ số: ${invoice.oldElectric} → ${invoice.newElectric} = ${invoice.eUsed} kWh`, PAD+16, y+54, { size:13, color:'#94a3b8' });
+            text(`${invoice.eUsed} kWh × ${new Intl.NumberFormat('vi-VN').format(invoice.details.electricityPrice)} đ = ${fmt(invoice.details.eTotal)}`, PAD+16, y+74, { size:13, color:'#94a3b8' });
+            y += eBlockH + 16;
 
             row('Tiền nước:', fmt(invoice.details.waterPrice));
-            feeLines.forEach(([label, value]) => row(label + ':', value));
+            feeLines.forEach(([lbl, val]) => row(lbl+':', val));
+            y += 8;
 
-            hline(y); y += 20;
-            // Tổng cộng
-            text('Tổng cộng:', PAD, y+20, { weight:'bold', size:15, color:'#0f172a' });
-            text(fmt(invoice.total), W-PAD, y+20, { weight:'bold', size:18, color:'#10b981', align:'right' });
-            y += 44;
+            hline(y);
+            y += 20;
 
-            // ==== TỔNG THANH TOÁN BOX ====
-            roundRect(PAD, y, W-PAD*2, 64, 16, '#0f172a');
-            text('TỔNG CỘNG THANH TOÁN', PAD+24, y+24, { size:10, weight:'bold', color:'rgba(255,255,255,0.5)' });
-            text(fmt(invoice.total), W-PAD-24, y+40, { size:22, weight:'bold', color:'#34d399', align:'right' });
-            y += 84;
+            // Dòng tổng cộng nổi bật
+            text('Tổng cộng:', PAD, y+28, { weight:'700', size:20, color:'#0f172a' });
+            text(fmt(invoice.total), W-PAD, y+28, { weight:'900', size:26, color:'#10b981', align:'right' });
+            y += 48;
 
-            // ==== BIỂU ĐỒ ====
+            // ===== TOTAL BOX =====
+            const tBoxH = 70;
+            roundRect(PAD, y, CW, tBoxH, 24, '#0f172a');
+            text('TỔNG CỘNG THANH TOÁN', PAD+24, y+24, { size:13, weight:'700', color:'rgba(255,255,255,0.45)' });
+            text(fmt(invoice.total), W-PAD-24, y+tBoxH*0.75, { size:28, weight:'900', color:'#34d399', align:'right' });
+            y += tBoxH + 48;
+
+            // ===== BIỂU ĐỒ =====
             if (chartDataUrl) {
-                text('BIỂU ĐỒ TIÊU THỤ ĐIỆN NĂNG (kWh)', W/2, y+14, { size:10, weight:'bold', color:'#94a3b8', align:'center' });
-                y += 24;
+                text('BIỂU ĐỒ TIÊU THỤ ĐIỆN NĂNG (kWh)', W/2, y+16, { size:13, weight:'700', color:'#94a3b8', align:'center' });
+                y += 32;
                 const chartImg = new Image();
-                await new Promise(res => {
-                    chartImg.onload = res; chartImg.onerror = res;
-                    chartImg.src = chartDataUrl;
-                });
-                const chartW = W - PAD*2;
-                const chartHH = 160;
-                roundRect(PAD, y, chartW, chartHH+12, 12, '#f8fafc');
+                await new Promise(res => { chartImg.onload = res; chartImg.onerror = res; chartImg.src = chartDataUrl; });
+                const chartDrawH = 160;
+                roundRect(PAD, y, CW, chartDrawH+16, 16, '#f8fafc', '#e2e8f0');
                 if (chartImg.complete && chartImg.naturalWidth > 0) {
-                    ctx.drawImage(chartImg, PAD+6, y+6, chartW-12, chartHH);
+                    ctx.drawImage(chartImg, PAD+8, y+8, CW-16, chartDrawH);
                 }
-                y += chartHH + 28;
+                y += chartDrawH + 16 + 40;
             }
 
-            // ==== QR CODE ====
+            // ===== QR CODE =====
             if (qrDataUrl) {
-                hlineDash(y); y += 24;
+                hline(y, true);
+                y += 32;
                 const qrImg = new Image();
                 await new Promise(res => { qrImg.onload = res; qrImg.onerror = res; qrImg.src = qrDataUrl; });
                 const qrSize = 220;
+                const qrPad  = 24;
+                const qrBoxW = qrSize + qrPad*2;
+                const qrBoxH = qrSize + qrPad*2;
+                roundRect(W/2-qrBoxW/2, y, qrBoxW, qrBoxH, 24, '#f8fafc', '#e2e8f0');
                 if (qrImg.complete && qrImg.naturalWidth > 0) {
-                    // Nền QR
-                    roundRect(W/2-qrSize/2-16, y, qrSize+32, qrSize+32, 20, '#f8fafc');
-                    ctx.drawImage(qrImg, W/2-qrSize/2, y+16, qrSize, qrSize);
+                    ctx.drawImage(qrImg, W/2-qrSize/2, y+qrPad, qrSize, qrSize);
                 }
-                y += qrSize + 48;
-                text(`${settings.bankName} - ${settings.bankAcc}`, W/2, y, { weight:'bold', size:14, color:'#0f172a', align:'center' });
-                y += 22;
-                text(settings.ownerName, W/2, y, { size:12, color:'#64748b', align:'center' });
+                y += qrBoxH + 28;
+                text(`${settings.bankName}  ·  ${settings.bankAcc}`, W/2, y+22, { weight:'700', size:18, color:'#0f172a', align:'center' });
                 y += 32;
+                text(settings.ownerName, W/2, y+20, { size:16, color:'#64748b', align:'center' });
+                y += 36;
             }
 
-            // ==== FOOTER ====
-            hlineDash(y); y += 20;
-            text('Cảm ơn bạn đã đồng hành, trân trọng sự hợp tác của chúng ta 🤝', W/2, y+16, { size:11, color:'#94a3b8', align:'center' });
+            // ===== FOOTER =====
+            hline(y, true);
+            y += 28;
+            text('Cảm ơn bạn đã đồng hành — trân trọng sự hợp tác của chúng ta 🤝', W/2, y+18, { size:14, color:'#94a3b8', align:'center' });
 
             return cv;
         };

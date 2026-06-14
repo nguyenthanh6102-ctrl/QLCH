@@ -296,6 +296,172 @@
         };
 
         // ============================================================
+        // PaymentLogModal — Sổ thu tiền từng phần
+        // ============================================================
+        const PaymentLogModal = ({ bill, onClose, paymentLogs, setPaymentLogs, bills, setBills, rooms }) => {
+            const [amount, setAmount] = useState(0);
+            const [dueDate, setDueDate] = useState('');
+            const [note, setNote] = useState('');
+
+            useEffect(() => {
+                if (bill) { setAmount(0); setDueDate(''); setNote(''); }
+            }, [bill?.id]);
+
+            if (!bill) return null;
+
+            const room = rooms.find(r => r.id === bill.roomId);
+            const logs = paymentLogs.filter(l => l.billId === bill.id).sort((a,b) => b.createdAt - a.createdAt);
+            const paidAmt = bill.paidAmount || 0;
+            const debtAmt = bill.total - paidAmt;
+            const isFullPaid = bill.paid;
+
+            const handleAddLog = () => {
+                if (!amount || amount <= 0) return;
+                const newLog = {
+                    id: generateID(),
+                    billId: bill.id,
+                    roomId: bill.roomId,
+                    amount: Math.min(amount, debtAmt),
+                    dueDate: dueDate || null,
+                    note: note.trim(),
+                    createdAt: Date.now(),
+                };
+                setPaymentLogs(prev => [...prev, newLog]);
+                // Cập nhật paidAmount trên bill
+                const newPaid = Math.min(paidAmt + newLog.amount, bill.total);
+                const nowFull = newPaid >= bill.total;
+                setBills(bills.map(b => b.id === bill.id
+                    ? { ...b, paidAmount: newPaid, paid: nowFull }
+                    : b
+                ));
+                setAmount(0); setDueDate(''); setNote('');
+            };
+
+            const handleDeleteLog = (logId, logAmount) => {
+                setPaymentLogs(prev => prev.filter(l => l.id !== logId));
+                const newPaid = Math.max(0, paidAmt - logAmount);
+                setBills(bills.map(b => b.id === bill.id
+                    ? { ...b, paidAmount: newPaid, paid: false }
+                    : b
+                ));
+            };
+
+            return (
+                <Modal isOpen={!!bill} onClose={onClose} title={`Sổ thu · P.${room?.name || ''}`}>
+                    {/* Tổng quan hóa đơn */}
+                    <div className="grid grid-cols-3 gap-2 mb-5">
+                        <div className="p-3 rounded-2xl text-center border" style={{background:'var(--surface2)', borderColor:'var(--border)'}}>
+                            <p className="text-[8px] font-black uppercase tracking-widest mb-1" style={{color:'var(--text3)'}}>Tổng HĐ</p>
+                            <p className="text-xs font-black" style={{color:'var(--text)'}}>{formatVND(bill.total)}</p>
+                        </div>
+                        <div className="p-3 rounded-2xl text-center" style={{background:'#ecfdf5'}}>
+                            <p className="text-[8px] font-black uppercase tracking-widest mb-1 text-emerald-600">Đã thu</p>
+                            <p className="text-xs font-black text-emerald-600">{formatVND(paidAmt)}</p>
+                        </div>
+                        <div className="p-3 rounded-2xl text-center" style={{background: debtAmt > 0 ? '#fff7ed' : '#ecfdf5'}}>
+                            <p className="text-[8px] font-black uppercase tracking-widest mb-1" style={{color: debtAmt > 0 ? '#f97316' : '#10b981'}}>Còn nợ</p>
+                            <p className="text-xs font-black" style={{color: debtAmt > 0 ? '#f97316' : '#10b981'}}>{formatVND(debtAmt)}</p>
+                        </div>
+                    </div>
+
+                    {/* Form ghi thu tiền */}
+                    {!isFullPaid && (
+                        <div className="p-4 rounded-2xl border mb-5" style={{background:'var(--surface2)', borderColor:'var(--border)'}}>
+                            <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{color:'var(--text3)'}}>Ghi thu tiền</p>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[9px] font-black uppercase tracking-widest mb-1 block" style={{color:'var(--text3)'}}>Số tiền thu</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={formatNum(amount)}
+                                            onChange={e => setAmount(Math.min(parseNum(e.target.value), debtAmt))}
+                                            placeholder="0"
+                                            className="w-full p-3 rounded-xl font-black text-sm border-2 border-transparent focus:border-blue-500 outline-none"
+                                            style={{background:'var(--surface)', color:'var(--text)'}}
+                                        />
+                                        <button onClick={() => setAmount(debtAmt)}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                                            Hết nợ
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[9px] font-black uppercase tracking-widest mb-1 block" style={{color:'var(--text3)'}}>Hẹn trả phần còn lại</label>
+                                    <input
+                                        type="date"
+                                        value={dueDate}
+                                        onChange={e => setDueDate(e.target.value)}
+                                        className="w-full p-3 rounded-xl font-bold text-sm border-2 border-transparent focus:border-blue-500 outline-none"
+                                        style={{background:'var(--surface)', color:'var(--text)'}}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[9px] font-black uppercase tracking-widest mb-1 block" style={{color:'var(--text3)'}}>Ghi chú</label>
+                                    <input
+                                        type="text"
+                                        value={note}
+                                        onChange={e => setNote(e.target.value)}
+                                        placeholder="VD: Trả thêm cuối tháng..."
+                                        className="w-full p-3 rounded-xl font-bold text-sm border-2 border-transparent focus:border-blue-500 outline-none"
+                                        style={{background:'var(--surface)', color:'var(--text)'}}
+                                    />
+                                </div>
+                                <button onClick={handleAddLog}
+                                    className="w-full p-3 bg-blue-600 text-white font-black rounded-xl text-sm shadow-lg shadow-blue-100">
+                                    + Ghi nhận thu tiền
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Lịch sử thu tiền */}
+                    <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{color:'var(--text3)'}}>
+                            Lịch sử thu ({logs.length} lần)
+                        </p>
+                        {logs.length === 0 && (
+                            <p className="text-center py-6 text-xs font-bold" style={{color:'var(--text3)'}}>Chưa có lần thu nào</p>
+                        )}
+                        <div className="space-y-2">
+                            {logs.map(log => {
+                                const isOverdue = log.dueDate && !isFullPaid && new Date(log.dueDate) < new Date();
+                                return (
+                                    <div key={log.id} className={`p-3 rounded-2xl border ${isOverdue ? 'border-red-200 bg-red-50' : ''}`}
+                                        style={!isOverdue ? {background:'var(--surface)', borderColor:'var(--border)'} : {}}>
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-sm font-black text-emerald-600">+{formatVND(log.amount)}</span>
+                                                    {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-100 px-2 py-0.5 rounded-full">⚠️ Quá hạn</span>}
+                                                </div>
+                                                <p className="text-[10px] font-bold" style={{color:'var(--text3)'}}>
+                                                    🕐 {new Date(log.createdAt).toLocaleString('vi-VN', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}
+                                                </p>
+                                                {log.dueDate && (
+                                                    <p className={`text-[10px] font-bold mt-0.5 ${isOverdue ? 'text-red-500' : ''}`} style={!isOverdue ? {color:'var(--text3)'} : {}}>
+                                                        📅 Hẹn: {new Date(log.dueDate).toLocaleDateString('vi-VN')}
+                                                    </p>
+                                                )}
+                                                {log.note && <p className="text-[10px] font-bold mt-0.5" style={{color:'var(--text2)'}}>💬 {log.note}</p>}
+                                            </div>
+                                            <button onClick={() => handleDeleteLog(log.id, log.amount)}
+                                                className="p-1.5 rounded-xl text-red-400 flex-shrink-0" style={{background:'var(--surface2)'}}>
+                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </Modal>
+            );
+        };
+
+        // ============================================================
         // QRImage: load về base64 qua Image() + canvas ẩn
         // ============================================================
         const QRImage = ({ src, onReady }) => {
@@ -660,10 +826,11 @@
             const [rooms, setRooms] = useState([]);
             const [bills, setBills] = useState([]);
             const [expenses, setExpenses] = useState([]);
+            const [paymentLogs, setPaymentLogs] = useState([]); // sổ thu tiền từng phần
             const [settings, setSettings] = useState({bankName:'', bankAcc:'', ownerName:''});
             const [activeTab, setActiveTab] = useState('dashboard');
             const [currentMonth, setCurrentMonth] = useState(getMonthStr());
-            const [modals, setModals] = useState({ house: null, room: null, bill: null, expense: null, invoice: null });
+            const [modals, setModals] = useState({ house: null, room: null, bill: null, expense: null, invoice: null, paymentLog: null });
             const [syncStatus, setSyncStatus] = useState('connecting');
             const [searchDash, setSearchDash] = useState('');
             const [searchMgmt, setSearchMgmt] = useState('');
@@ -729,9 +896,10 @@
                     setBills(fbData.bills || []);
                     setExpenses(fbData.expenses || []);
                     setSettings(fbData.settings || {bankName:'', bankAcc:'', ownerName:''});
+                    setPaymentLogs(fbData.paymentLogs || []);
                     console.log('✅ Data loaded from Firebase:', Object.keys(fbData));
                 } else {
-                    setHouses([]); setRooms([]); setBills([]); setExpenses([]);
+                    setHouses([]); setRooms([]); setBills([]); setExpenses([]); setPaymentLogs([]);
                     setSettings({bankName:'', bankAcc:'', ownerName:''});
                     console.log('ℹ️ New user, starting fresh');
                 }
@@ -741,7 +909,7 @@
             useEffect(() => {
                 if (!viewingUid) return;
                 dataLoaded.current = false;
-                setHouses([]); setRooms([]); setBills([]); setExpenses([]);
+                setHouses([]); setRooms([]); setBills([]); setExpenses([]); setPaymentLogs([]);
                 setSettings({bankName:'', bankAcc:'', ownerName:''});
                 setSyncStatus('connecting');
             }, [viewingUid]);
@@ -751,10 +919,10 @@
                 clearTimeout(syncTimer.current);
                 syncTimer.current = setTimeout(() => {
                     setSyncStatus('connecting');
-                    pushData(activeUid, { houses, rooms, bills, expenses, settings });
+                    pushData(activeUid, { houses, rooms, bills, expenses, settings, paymentLogs });
                     setTimeout(() => setSyncStatus('ok'), 800);
                 }, 1200);
-            }, [houses, rooms, bills, expenses, settings, activeUid]);
+            }, [houses, rooms, bills, expenses, settings, paymentLogs, activeUid]);
 
             useEffect(() => {
                 if (!unlocked) return;
@@ -1038,7 +1206,12 @@
                 const monthBills = bills.filter(b => b.month === currentMonth);
                 const monthExps = expenses.filter(e => e.month === currentMonth);
                 const duThu = monthBills.reduce((s, b) => s + b.total, 0);
-                const daThu = monthBills.filter(b => b.paid).reduce((s, b) => s + b.total, 0);
+                // daThu = tổng tiền THỰC thu (paidAmount nếu có, hoặc total nếu paid=true)
+                const daThu = monthBills.reduce((s, b) => {
+                    if (b.paid) return s + b.total;
+                    if (b.paidAmount > 0) return s + b.paidAmount;
+                    return s;
+                }, 0);
                 const tongChi = monthExps.reduce((s, e) => s + e.amount, 0);
                 return { duThu, daThu, tongChi, loiNhuan: daThu - tongChi };
             })();
@@ -1091,7 +1264,11 @@
                             const hExps = hExpsWithId.length > 0 ? hExpsWithId : 
                                 (isFirstHouse ? allMonthExps.filter(e => !e.houseId) : []);
                             const hDuThu = hBills.reduce((s,b) => s+b.total, 0);
-                            const hDaThu = hBills.filter(b=>b.paid).reduce((s,b) => s+b.total, 0);
+                            const hDaThu = hBills.reduce((s,b) => {
+                                if (b.paid) return s + b.total;
+                                if (b.paidAmount > 0) return s + b.paidAmount;
+                                return s;
+                            }, 0);
                             const hChi = hExps.reduce((s,e) => s+e.amount, 0);
                             const hLai = hDaThu - hChi;
                             const isOpen = !!openHouses[h.id];
@@ -1137,19 +1314,91 @@
                                                 <div className="space-y-2">
                                                     {hRooms.map(r => {
                                                         const bill = hBills.find(b => b.roomId === r.id);
-                                                        return (
-                                                            <div key={r.id} onClick={() => bill && setModals({...modals, invoice: bill})} className="p-3 rounded-2xl flex justify-between items-center cursor-pointer active:scale-[0.98] transition-all border" style={{background:'var(--surface)', borderColor:'var(--border)'}}>
+                                                        if (!bill) return (
+                                                            <div key={r.id} className="p-3 rounded-2xl flex justify-between items-center border" style={{background:'var(--surface)', borderColor:'var(--border)'}}>
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${bill ? (bill.paid ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600') : 'bg-slate-100 text-slate-400'}`}>{r.name}</div>
+                                                                    <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs bg-slate-100 text-slate-400">{r.name}</div>
                                                                     <div>
                                                                         <p className="text-xs font-bold" style={{color:'var(--text)'}}>{r.occupants || 'Phòng trống'}</p>
-                                                                        <p className="text-[10px]" style={{color:'var(--text3)'}}>{bill ? formatVND(bill.total) : 'Chưa tạo HĐ'}</p>
+                                                                        <p className="text-[10px]" style={{color:'var(--text3)'}}>Chưa tạo HĐ</p>
                                                                     </div>
                                                                 </div>
-                                                                {bill && (
-                                                                    <button onClick={e => { e.stopPropagation(); setBills(bills.map(b => b.id===bill.id ? {...b, paid:!b.paid} : b)); }} className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${bill.paid ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                                                                        {bill.paid ? 'Đã thu' : 'Chưa thu'}
-                                                                    </button>
+                                                            </div>
+                                                        );
+                                                        // Tính trạng thái thanh toán
+                                                        const paidAmt = bill.paidAmount || 0;
+                                                        const isFullPaid = bill.paid;
+                                                        const isPartial = !isFullPaid && paidAmt > 0;
+                                                        const debtAmt = bill.total - paidAmt;
+                                                        const logs = paymentLogs.filter(l => l.billId === bill.id).sort((a,b) => b.createdAt - a.createdAt);
+                                                        const lastLog = logs[0];
+                                                        const isOverdue = lastLog?.dueDate && !isFullPaid && new Date(lastLog.dueDate) < new Date();
+
+                                                        return (
+                                                            <div key={r.id} className="rounded-2xl border overflow-hidden" style={{background:'var(--surface)', borderColor: isOverdue ? '#fca5a5' : 'var(--border)'}}>
+                                                                {/* Row chính */}
+                                                                <div className="p-3 flex justify-between items-center">
+                                                                    <div onClick={() => setModals({...modals, invoice: bill})} className="flex items-center gap-3 flex-1 cursor-pointer">
+                                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs flex-shrink-0
+                                                                            ${isFullPaid ? 'bg-emerald-100 text-emerald-600' : isPartial ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-500'}`}>
+                                                                            {r.name}
+                                                                        </div>
+                                                                        <div className="min-w-0">
+                                                                            <p className="text-xs font-bold truncate" style={{color:'var(--text)'}}>{r.occupants || 'Phòng trống'}</p>
+                                                                            <p className="text-[10px]" style={{color:'var(--text3)'}}>
+                                                                                {isPartial
+                                                                                    ? <span>Đã thu <span className="text-amber-500 font-black">{formatVND(paidAmt)}</span> · Nợ <span className="text-red-400 font-black">{formatVND(debtAmt)}</span></span>
+                                                                                    : formatVND(bill.total)
+                                                                                }
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                                                        {/* Nút sổ thu */}
+                                                                        <button onClick={e => { e.stopPropagation(); setModals({...modals, paymentLog: bill}); }}
+                                                                            className={`p-1.5 rounded-xl relative ${isOverdue ? 'bg-red-50' : 'bg-slate-50'}`}
+                                                                            title="Sổ thu tiền">
+                                                                            <svg className={`w-4 h-4 ${isOverdue ? 'text-red-400' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                                                            </svg>
+                                                                            {(isPartial || isOverdue) && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-400"></span>}
+                                                                        </button>
+                                                                        {/* Nút Đã thu / Chưa thu */}
+                                                                        <button onClick={e => { e.stopPropagation(); setBills(bills.map(b => b.id===bill.id ? {...b, paid:!b.paid, paidAmount: !b.paid ? b.total : 0} : b)); }}
+                                                                            className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest
+                                                                            ${isFullPaid ? 'bg-emerald-500 text-white' : isPartial ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                                            {isFullPaid ? 'Đã thu' : isPartial ? 'Một phần' : 'Chưa thu'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Badge quá hạn */}
+                                                                {isOverdue && (
+                                                                    <div className="px-3 pb-2">
+                                                                        <p className="text-[9px] font-black text-red-400 bg-red-50 px-2 py-1 rounded-lg">
+                                                                            ⚠️ Quá hạn hẹn {new Date(lastLog.dueDate).toLocaleDateString('vi-VN')} · Còn nợ {formatVND(debtAmt)}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                                {/* Input nhập tiền đã thu — hiện khi chưa thu đủ */}
+                                                                {!isFullPaid && (
+                                                                    <div className="px-3 pb-3 border-t pt-2" style={{borderColor:'var(--border)'}}>
+                                                                        <p className="text-[9px] font-black uppercase tracking-widest mb-1" style={{color:'var(--text3)'}}>Tiền đã thu</p>
+                                                                        <div className="flex gap-2 items-center">
+                                                                            <input
+                                                                                type="text"
+                                                                                value={formatNum(bill.paidAmount || 0)}
+                                                                                onChange={e => {
+                                                                                    const val = parseNum(e.target.value);
+                                                                                    setBills(bills.map(b => b.id===bill.id ? {...b, paidAmount: Math.min(val, b.total)} : b));
+                                                                                }}
+                                                                                onClick={e => e.stopPropagation()}
+                                                                                placeholder="0"
+                                                                                className="flex-1 p-2 rounded-xl text-xs font-black border-2 border-transparent focus:border-blue-400 outline-none"
+                                                                                style={{background:'var(--input-bg)', color:'var(--text)'}}
+                                                                            />
+                                                                            <span className="text-[10px] font-bold" style={{color:'var(--text3)'}}>/ {formatVND(bill.total)}</span>
+                                                                        </div>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         );
@@ -1268,7 +1517,11 @@
                             {months.map(m => {
                                 const mBills = bills.filter(b => b.month === m);
                                 const mExps = expenses.filter(e => e.month === m);
-                                const thu = mBills.filter(b => b.paid).reduce((s,b) => s + b.total, 0);
+                                const thu = mBills.reduce((s,b) => {
+                                if (b.paid) return s + b.total;
+                                if (b.paidAmount > 0) return s + b.paidAmount;
+                                return s;
+                            }, 0);
                                 const chi = mExps.reduce((s,e) => s + e.amount, 0);
                                 return (
                                     <div key={m} className="p-6 rounded-[2rem] border shadow-sm relative overflow-hidden group" style={{background: 'var(--surface)', borderColor: 'var(--border)'}}>
@@ -1757,6 +2010,17 @@
                         bills={bills}
                         rooms={rooms}
                         BillChart={BillChart}
+                    />
+
+                    {/* MODAL SỔ THU TIỀN */}
+                    <PaymentLogModal
+                        bill={modals.paymentLog}
+                        onClose={() => setModals({...modals, paymentLog: null})}
+                        paymentLogs={paymentLogs}
+                        setPaymentLogs={setPaymentLogs}
+                        bills={bills}
+                        setBills={setBills}
+                        rooms={rooms}
                     />
 
                     {/* MODAL CHI PHÍ */}

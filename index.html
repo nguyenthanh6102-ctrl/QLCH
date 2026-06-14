@@ -513,9 +513,9 @@
         // Tối ưu tỉ lệ cho mobile (width 1080px ~ A4 dọc chuẩn)
         // ============================================================
         const drawInvoiceCanvas = async ({ invoice, settings, chartDataUrl, qrDataUrl }) => {
-            // Tỉ lệ 9:16 chuẩn mobile — nội dung dồn giữa, 2 bên thoáng
-            const W   = 720;    // width hẹp = thon gọn
-            const PAD = 48;     // padding nhỏ để CW chiếm ~87% width
+            // Tỉ lệ 9:16 chuẩn mobile — thon gọn, content dồn giữa
+            const W   = 640;    // hẹp hơn nữa cho thon
+            const PAD = 56;     // padding lớn hơn = content dồn vào giữa
             const CW  = W - PAD * 2;
             const fmt = (n) => new Intl.NumberFormat('vi-VN').format(n || 0) + ' đ';
 
@@ -532,7 +532,7 @@
             const baseH   = 310 + ROW_H * (2 + feeLines.length) + 100 + 90; // header+rows+total+totalbox
             const chartH  = chartDataUrl ? 260 : 0;
             const qrH     = qrDataUrl    ? 380 : 0;
-            const footerH = 80;
+            const footerH = 120;
             const H = baseH + chartH + qrH + footerH;
 
             const cv = document.createElement('canvas');
@@ -668,12 +668,23 @@
                 y += 36;
             }
 
-            // ===== FOOTER =====
+            // ===== FOOTER — luôn hiện dù có QR hay không =====
+            y += 16;
             hline(y, true);
             y += 28;
-            text('Cảm ơn bạn đã đồng hành — trân trọng sự hợp tác của chúng ta 🤝', W/2, y+18, { size:14, color:'#94a3b8', align:'center' });
+            text('Cảm ơn bạn đã đồng hành,', W/2, y+18, { size:13, color:'#94a3b8', align:'center' });
+            y += 24;
+            text('trân trọng sự hợp tác của chúng ta 🤝', W/2, y+18, { size:13, color:'#94a3b8', align:'center' });
+            y += 40;
 
-            return cv;
+            // Resize canvas về đúng chiều cao thực tế đã vẽ
+            const finalH = y + 20;
+            const finalCv = document.createElement('canvas');
+            finalCv.width = W * 2;
+            finalCv.height = finalH * 2;
+            const finalCtx = finalCv.getContext('2d');
+            finalCtx.drawImage(cv, 0, 0);
+            return finalCv;
         };
 
         // --- INVOICE MODAL COMPONENT ---
@@ -718,7 +729,7 @@
             };
 
             const qrSrc = settings.bankAcc
-                ? `https://img.vietqr.io/image/${settings.bankName}-${settings.bankAcc}-compact2.png?amount=${invoice?.total}&addInfo=${encodeURIComponent(removeAccents(`PHONG ${invoice?.details?.name} THANG ${invoice?.month} ${invoice?.details?.occupants}`))}`
+                ? `https://img.vietqr.io/image/${settings.bankName}-${settings.bankAcc}-compact2.png?amount=${invoice?.total}`
                 : null;
 
             return (

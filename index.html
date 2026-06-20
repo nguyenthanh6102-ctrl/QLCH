@@ -1359,8 +1359,7 @@
                                                                 {/* Row chính */}
                                                                 <div className="p-3 flex justify-between items-center">
                                                                     <div onClick={() => setModals({...modals, invoice: bill})} className="flex items-center gap-3 flex-1 cursor-pointer">
-                                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs flex-shrink-0
-                                                                            ${isFullPaid ? 'bg-emerald-100 text-emerald-600' : isPartial ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-500'}`}>
+                                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs flex-shrink-0 ${isFullPaid ? 'bg-emerald-100 text-emerald-600' : isPartial ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-500'}`}>
                                                                             {r.name}
                                                                         </div>
                                                                         <div className="min-w-0">
@@ -1385,8 +1384,7 @@
                                                                         </button>
                                                                         {/* Nút Đã thu / Chưa thu */}
                                                                         <button onClick={e => { e.stopPropagation(); setBills(bills.map(b => b.id===bill.id ? {...b, paid:!b.paid, paidAmount: !b.paid ? b.total : 0} : b)); }}
-                                                                            className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest
-                                                                            ${isFullPaid ? 'bg-emerald-500 text-white' : isPartial ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                                            className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isFullPaid ? 'bg-emerald-500 text-white' : isPartial ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400'}`}>
                                                                             {isFullPaid ? 'Đã thu' : isPartial ? 'Một phần' : 'Chưa thu'}
                                                                         </button>
                                                                     </div>
